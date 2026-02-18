@@ -1,0 +1,49 @@
+name: Validate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose
+        run: |
+          if [ -f docker-compose.prod.yml ]; then
+            docker compose -f docker-compose.prod.yml config --quiet
+            echo "✓ docker-compose.prod.yml is valid"
+          fi
+          if [ -f docker-compose.yml ]; then
+            docker compose -f docker-compose.yml config --quiet
+            echo "✓ docker-compose.yml is valid"
+          fi
+
+      - name: Validate config.json
+        run: |
+          if [ -f config/config.json ]; then
+            python3 -m json.tool config/config.json > /dev/null
+            echo "✓ config/config.json is valid JSON"
+          fi
+
+      - name: Validate shell scripts
+        run: |
+          for script in scripts/*.sh scripts/lib/*.sh; do
+            if [ -f "$script" ]; then
+              bash -n "$script"
+              echo "✓ $script syntax OK"
+            fi
+          done
+
+      - name: Check for secrets in code
+        run: |
+          if grep -rE "(password|secret|api_key|token).*=.*['\"][^'\"]+['\"]" --include="*.sh" --include="*.yml" --include="*.yaml" . 2>/dev/null | grep -v ".env.example" | grep -v ".gitignore" | grep -v ".github/"; then
+            echo "⚠ Potential secrets found in code"
+            exit 1
+          fi
+          echo "✓ No hardcoded secrets detected"

@@ -1,0 +1,39 @@
+# =============================================================================
+# kodemeio-bifrost - Git Ignore
+# =============================================================================
+
+# Environment files with secrets
+.env
+.env.prod
+.env.local
+.env.*.local
+
+# Docker volumes (local dev)
+data/
+
+# Database files
+*.db
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups (local)
+*.tar.gz
+*.bak
+
+# Secrets
+*.pem
+*.key
+secrets/
+certs/

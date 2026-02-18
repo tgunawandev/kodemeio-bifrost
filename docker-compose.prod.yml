@@ -1,0 +1,90 @@
+# =============================================================================
+# Bifrost AI Gateway - Production (Dokploy)
+# =============================================================================
+# Deploy via Dokploy: Git source -> docker-compose.prod.yml
+# Uses maximhq/bifrost upstream image with config.json volume mount.
+#
+# Configuration via environment variables (.env.prod):
+#   DOMAIN                - Domain for Traefik routing (ai.kodeme.io)
+#   OPENAI_API_KEY        - OpenAI API key
+#   ANTHROPIC_API_KEY     - Anthropic API key
+#   GOOGLE_API_KEY        - Google AI API key
+#
+# Deployment:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+# =============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+volumes:
+  bifrost-data:
+
+networks:
+  dokploy-network:
+    external: true
+  bifrost-internal:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------------------
+  # Bifrost — AI Gateway
+  # ---------------------------------------------------------------------------
+  bifrost:
+    image: maximhq/bifrost:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - dokploy-network
+      - bifrost-internal
+    environment:
+      # Bifrost core
+      APP_PORT: "${APP_PORT:-8080}"
+      APP_HOST: "${APP_HOST:-0.0.0.0}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_STYLE: "${LOG_STYLE:-json}"
+      # AI Provider Keys
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      # Timezone
+      TZ: "${TZ:-Asia/Jakarta}"
+    volumes:
+      - bifrost-data:/app/data
+      - ./config/config.json:/app/data/config.json:ro
+    labels:
+      # Traefik routing (HTTPS)
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-bifrost}.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-bifrost}.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-bifrost}.tls=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-bifrost}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME:-bifrost}.loadbalancer.server.port=${APP_PORT:-8080}"
+      # Monitoring labels (Grafana Alloy/Loki)
+      - "logging=promtail"
+      - "logging.format=json"
+      - "app=bifrost"
+      - "app.tenant=${TENANT:-kodemeio}"
+      - "app.component=gateway"
+      - "app.service=bifrost-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-1}"
+          memory: ${MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: "${CPU_RESERVATION:-0.25}"
+          memory: ${MEMORY_RESERVATION:-256M}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${APP_PORT:-8080}/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
